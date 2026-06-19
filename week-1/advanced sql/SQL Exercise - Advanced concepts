@@ -1,0 +1,98 @@
+-- ============================================
+-- SQL Exercise - Advanced Concepts
+-- ============================================
+
+-- Ex 1: Ranking and Window Functions (Global)
+SELECT
+    EmployeeID,
+    EmployeeName,
+    Department,
+    Salary,
+
+    ROW_NUMBER() OVER (
+        ORDER BY Salary DESC
+    ) AS RowNum,
+
+    RANK() OVER (
+        ORDER BY Salary DESC
+    ) AS RankValue,
+
+    DENSE_RANK() OVER (
+        ORDER BY Salary DESC
+    ) AS DenseRankValue
+
+FROM Employees;
+
+
+-- Ex 2: Ranking Within Each Department (PARTITION BY)
+SELECT
+    EmployeeID,
+    EmployeeName,
+    Department,
+    Salary,
+
+    RANK() OVER (
+        PARTITION BY Department
+        ORDER BY Salary DESC
+    ) AS DeptRank,
+
+    DENSE_RANK() OVER (
+        PARTITION BY Department
+        ORDER BY Salary DESC
+    ) AS DeptDenseRank
+
+FROM Employees;
+
+
+-- Ex 3: Running Total and Moving Average
+SELECT
+    EmployeeID,
+    EmployeeName,
+    Department,
+    Salary,
+
+    SUM(Salary) OVER (
+        ORDER BY Salary DESC
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS RunningTotal,
+
+    AVG(Salary) OVER (
+        ORDER BY Salary DESC
+        ROWS BETWEEN 2 PRECEDING AND CURRENT ROW
+    ) AS MovingAvg3
+
+FROM Employees;
+
+
+-- Ex 4: CTE (Common Table Expression) - Top Earner Per Department
+WITH DeptRanked AS (
+    SELECT
+        EmployeeID,
+        EmployeeName,
+        Department,
+        Salary,
+        RANK() OVER (
+            PARTITION BY Department
+            ORDER BY Salary DESC
+        ) AS rnk
+    FROM Employees
+)
+SELECT
+    EmployeeID,
+    EmployeeName,
+    Department,
+    Salary
+FROM DeptRanked
+WHERE rnk = 1;
+
+
+-- Ex 5: Salary Difference from Department Average
+SELECT
+    EmployeeID,
+    EmployeeName,
+    Department,
+    Salary,
+    ROUND(AVG(Salary) OVER (PARTITION BY Department), 2) AS DeptAvgSalary,
+    ROUND(Salary - AVG(Salary) OVER (PARTITION BY Department), 2) AS DiffFromAvg
+FROM Employees
+ORDER BY Department, Salary DESC;
