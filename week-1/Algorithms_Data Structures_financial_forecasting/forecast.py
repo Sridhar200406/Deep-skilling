@@ -15,12 +15,14 @@ def forecast(current: float, growth: float, years: int, compounding_periods_per_
     if current < 0:
         raise ValueError("The starting principal amount cannot be negative.")
     if compounding_periods_per_year <= 0:
+        
         raise ValueError("Compounding periods per year must be a positive integer.")
 
     rate_per_period = growth / compounding_periods_per_year
     total_periods = years * compounding_periods_per_year
     
     return current * (1 + rate_per_period) ** total_periods
+
 
 def main():
     parser = argparse.ArgumentParser(description="Calculate the future value of an investment.")
