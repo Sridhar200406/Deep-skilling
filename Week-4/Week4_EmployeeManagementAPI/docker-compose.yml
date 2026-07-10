@@ -1,0 +1,58 @@
+# ============================================================
+# Docker Compose — Employee Management API + SQL Server
+# ============================================================
+# Usage:
+#   docker-compose up -d --build       # build and start
+#   docker-compose down                # stop and remove containers
+#   docker-compose logs -f api         # tail API logs
+# ============================================================
+
+services:
+
+  # ──────────────────────────────────────────────────────────
+  # SQL Server 2022 (Developer Edition — free for dev/test)
+  # ──────────────────────────────────────────────────────────
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: emp-sqlserver
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Strong@Passw0rd!"
+      MSSQL_PID: "Developer"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+    healthcheck:
+      test: /opt/mssql-tools18/bin/sqlcmd -S localhost -U SA -P "Strong@Passw0rd!" -Q "SELECT 1" -C -b
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ──────────────────────────────────────────────────────────
+  # ASP.NET Core Web API
+  # ──────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: emp-api
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ConnectionStrings__DefaultConnection: "Server=sqlserver;Database=EmployeeManagementDB;User Id=sa;Password=Strong@Passw0rd!;TrustServerCertificate=True;MultipleActiveResultSets=true"
+      JwtSettings__SecretKey: "EmployeeManagementAPI_SuperSecretKey_Week3Day7_2026!@#$$%"
+      JwtSettings__Issuer: "EmployeeManagementAPI"
+      JwtSettings__Audience: "EmployeeManagementAPIClients"
+      JwtSettings__ExpiryMinutes: "60"
+    ports:
+      - "5000:8080"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    volumes:
+      - uploads-data:/app/wwwroot/Uploads
+
+volumes:
+  sqlserver-data:
+  uploads-data:
