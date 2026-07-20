@@ -1,0 +1,152 @@
+version: '3.8'
+
+services:
+
+  # ── Infrastructure ───────────────────────────────────────────────────────────
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"    # Management UI: http://localhost:15672 (guest/guest)
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong@Password123"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD", "/opt/mssql-tools/bin/sqlcmd", "-S", "localhost", "-U", "sa", "-P", "YourStrong@Password123", "-Q", "SELECT 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Microservices ─────────────────────────────────────────────────────────────
+
+  authentication-service:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.AuthenticationService
+    container_name: authentication-service
+    ports:
+      - "5001:5001"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5001
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=AuthServiceDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;"
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      JwtSettings__ExpirationMinutes: "60"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+
+  department-service:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.DepartmentService
+    container_name: department-service
+    ports:
+      - "5003:5003"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5003
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=DepartmentServiceDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;"
+      ConnectionStrings__Redis: "redis:6379"
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  employee-service:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.EmployeeService
+    container_name: employee-service
+    ports:
+      - "5002:5002"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5002
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=EmployeeServiceDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;"
+      ConnectionStrings__Redis: "redis:6379"
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      RabbitMQ__Host: rabbitmq
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: guest
+      RabbitMQ__Password: guest
+      ServiceUrls__DepartmentService: "http://department-service:5003"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      department-service:
+        condition: service_started
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.ApiGateway
+    container_name: api-gateway
+    ports:
+      - "5000:5000"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5000
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+    depends_on:
+      - authentication-service
+      - employee-service
+      - department-service
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  sqlserver_data:
