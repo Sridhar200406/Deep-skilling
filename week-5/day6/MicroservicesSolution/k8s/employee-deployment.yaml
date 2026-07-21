@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: employee-service
+  namespace: employee-mgmt
+  labels:
+    app: employee-service
+spec:
+  replicas: 2            # 2 replicas — demonstrates horizontal scaling
+  selector:
+    matchLabels:
+      app: employee-service
+  template:
+    metadata:
+      labels:
+        app: employee-service
+    spec:
+      containers:
+        - name: employee-service
+          image: employee-mgmt/employee-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5002
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://+:5002"
+            - name: ASPNETCORE_ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ASPNETCORE_ENVIRONMENT
+            - name: ConnectionStrings__DefaultConnection
+              value: "Server=sqlserver,1433;Database=EmployeeServiceDb;User Id=sa;Password=$(SA_PASSWORD);TrustServerCertificate=True;"
+            - name: SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: SqlServer__SaPassword
+            - name: ConnectionStrings__Redis
+              value: "redis:6379"
+            - name: JwtSettings__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JwtSettings__Secret
+            - name: JwtSettings__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JwtSettings__Issuer
+            - name: JwtSettings__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JwtSettings__Audience
+            - name: RabbitMQ__Host
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: RabbitMQ__Host
+            - name: RabbitMQ__Port
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: RabbitMQ__Port
+            - name: RabbitMQ__UserName
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: RabbitMQ__UserName
+            - name: RabbitMQ__Password
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: RabbitMQ__Password
+            - name: ServiceUrls__DepartmentService
+              value: "http://department-service:5003"
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "150m"
+            limits:
+              memory: "384Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /api/employees/health
+              port: 5002
+            initialDelaySeconds: 25
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/employees/health
+              port: 5002
+            initialDelaySeconds: 20
+            periodSeconds: 10

@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY ["AuthenticationService/AuthenticationService.csproj", "AuthenticationService/"]
+COPY ["Logging/Logging.csproj",                             "Logging/"]
+COPY ["Monitoring/Monitoring.csproj",                       "Monitoring/"]
+
+RUN dotnet restore "AuthenticationService/AuthenticationService.csproj"
+
+COPY . .
+WORKDIR "/src/AuthenticationService"
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+RUN mkdir -p /app/logs
+EXPOSE 5001
+COPY --from=build /app/publish .
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
+USER appuser
+ENTRYPOINT ["dotnet", "AuthenticationService.dll"]

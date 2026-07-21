@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: authentication-service
+  namespace: employee-mgmt
+  labels:
+    app: authentication-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: authentication-service
+  template:
+    metadata:
+      labels:
+        app: authentication-service
+    spec:
+      containers:
+        - name: authentication-service
+          image: employee-mgmt/authentication-service:latest
+          imagePullPolicy: Never          # use local image from Docker Desktop / Minikube
+          ports:
+            - containerPort: 5001
+          env:
+            - name: ASPNETCORE_URLS
+              value: "http://+:5001"
+            - name: ASPNETCORE_ENVIRONMENT
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: ASPNETCORE_ENVIRONMENT
+            - name: ConnectionStrings__DefaultConnection
+              value: "Server=sqlserver,1433;Database=AuthServiceDb;User Id=sa;Password=$(SA_PASSWORD);TrustServerCertificate=True;"
+            - name: SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: SqlServer__SaPassword
+            - name: JwtSettings__Secret
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: JwtSettings__Secret
+            - name: JwtSettings__Issuer
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JwtSettings__Issuer
+            - name: JwtSettings__Audience
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JwtSettings__Audience
+            - name: JwtSettings__ExpirationMinutes
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: JwtSettings__ExpirationMinutes
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "300m"
+          livenessProbe:
+            httpGet:
+              path: /api/auth/health
+              port: 5001
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /api/auth/health
+              port: 5001
+            initialDelaySeconds: 15
+            periodSeconds: 10

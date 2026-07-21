@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: employee-mgmt
+data:
+  # Service URLs — use Kubernetes Service names (not localhost)
+  DepartmentService__Url: "http://department-service:5003"
+  AuthService__Url: "http://authentication-service:5001"
+  EmployeeService__Url: "http://employee-service:5002"
+
+  # RabbitMQ
+  RabbitMQ__Host: "rabbitmq"
+  RabbitMQ__Port: "5672"
+  RabbitMQ__UserName: "guest"
+  RabbitMQ__VirtualHost: "/"
+
+  # Redis
+  Redis__Host: "redis"
+  Redis__Port: "6379"
+
+  # Cache TTLs
+  Cache__EmployeeExpiryMinutes: "10"
+  Cache__DepartmentExpiryMinutes: "30"
+
+  # JWT (non-secret fields only)
+  JwtSettings__Issuer: "AuthenticationService"
+  JwtSettings__Audience: "MicroservicesClients"
+  JwtSettings__ExpirationMinutes: "60"
+
+  # ASP.NET
+  ASPNETCORE_ENVIRONMENT: "Production"
