@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: employee-mgmt
+  labels:
+    app: employee-management
+    week: "5"
+    day: "6"

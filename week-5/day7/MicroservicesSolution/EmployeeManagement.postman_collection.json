@@ -1,0 +1,523 @@
+{
+  "info": {
+    "_postman_id": "week5-day7-employee-mgmt",
+    "name": "Week 5 – Employee Management Microservices",
+    "description": "Complete API test collection for the Employee Management Microservices solution (Days 1-7).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url",  "value": "http://localhost:5000",  "type": "string" },
+    { "key": "auth_url",  "value": "http://localhost:5001",  "type": "string" },
+    { "key": "emp_url",   "value": "http://localhost:5002",  "type": "string" },
+    { "key": "dept_url",  "value": "http://localhost:5003",  "type": "string" },
+    { "key": "jwt_token", "value": "",                       "type": "string" }
+  ],
+  "item": [
+
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('Token present', () => pm.expect(body.token).to.be.a('string'));",
+                "pm.collectionVariables.set('jwt_token', body.token);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/gateway/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john.doe@test.com\",\n  \"password\": \"Password1\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('Token present', () => pm.expect(body.token).to.be.a('string'));",
+                "pm.collectionVariables.set('jwt_token', body.token);",
+                "console.log('Token saved:', body.token.substring(0, 30) + '...');"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/gateway/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john.doe@test.com\",\n  \"password\": \"Password1\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Auth Health",
+          "request": {
+            "method": "GET",
+            "url": "{{auth_url}}/api/auth/health"
+          }
+        },
+        {
+          "name": "Login – Invalid Credentials (expect 401)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"] }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/gateway/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"wrong@test.com\",\n  \"password\": \"WrongPassword\"\n}"
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "2. Employee CRUD",
+      "item": [
+        {
+          "name": "Get All Employees",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('Success true', () => pm.expect(body.success).to.be.true);",
+                "pm.test('Data is array', () => pm.expect(body.data).to.be.an('array'));"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/gateway/employees?pageNumber=1&pageSize=10",
+              "host": ["{{base_url}}"],
+              "path": ["gateway", "employees"],
+              "query": [
+                { "key": "pageNumber", "value": "1" },
+                { "key": "pageSize",   "value": "10" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Employees – Filter by Department",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": {
+              "raw": "{{base_url}}/gateway/employees?departmentId=1&sortBy=salary&isAscending=false",
+              "host": ["{{base_url}}"],
+              "path": ["gateway", "employees"],
+              "query": [
+                { "key": "departmentId", "value": "1" },
+                { "key": "sortBy",       "value": "salary" },
+                { "key": "isAscending",  "value": "false" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Employee",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                "const body = pm.response.json();",
+                "pm.test('EmployeeId present', () => pm.expect(body.data.employeeId).to.be.a('number'));",
+                "pm.collectionVariables.set('created_employee_id', body.data.employeeId);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+            ],
+            "url": "{{base_url}}/gateway/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"email\": \"jane.smith@company.com\",\n  \"phone\": \"555-9999\",\n  \"position\": \"Senior Developer\",\n  \"salary\": 95000,\n  \"hireDate\": \"2024-01-15T00:00:00\",\n  \"departmentId\": 1,\n  \"isActive\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Employee By ID",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('DepartmentName populated', () => pm.expect(body.data.departmentName).to.not.be.null);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/employees/{{created_employee_id}}"
+          }
+        },
+        {
+          "name": "Update Employee",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"]
+            }
+          }],
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+            ],
+            "url": "{{base_url}}/gateway/employees/{{created_employee_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employeeId\": {{created_employee_id}},\n  \"firstName\": \"Jane\",\n  \"lastName\": \"Smith\",\n  \"email\": \"jane.smith@company.com\",\n  \"phone\": \"555-9999\",\n  \"position\": \"Lead Developer\",\n  \"salary\": 105000,\n  \"hireDate\": \"2024-01-15T00:00:00\",\n  \"departmentId\": 2,\n  \"isActive\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Employee",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"]
+            }
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/employees/{{created_employee_id}}"
+          }
+        },
+        {
+          "name": "Get Non-Existent Employee (expect 404)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));"] }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/employees/999999"
+          }
+        },
+        {
+          "name": "Access Without Token (expect 401)",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));"] }
+          }],
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/gateway/employees"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "3. Department CRUD",
+      "item": [
+        {
+          "name": "Get All Departments",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('Data is array', () => pm.expect(body.data).to.be.an('array'));",
+                "pm.test('Has seeded departments', () => pm.expect(body.data.length).to.be.gte(4));"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/departments"
+          }
+        },
+        {
+          "name": "Get Department By ID",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('Name present', () => pm.expect(body.data.name).to.be.a('string'));"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/departments/1"
+          }
+        },
+        {
+          "name": "Create Department",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                "const body = pm.response.json();",
+                "pm.collectionVariables.set('created_dept_id', body.data.departmentId);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+            ],
+            "url": "{{base_url}}/gateway/departments",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"DevOps\",\n  \"description\": \"Platform engineering team\",\n  \"location\": \"Floor 4\",\n  \"isActive\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Update Department",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+            ],
+            "url": "{{base_url}}/gateway/departments/{{created_dept_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Platform Engineering\",\n  \"description\": \"Updated description\",\n  \"location\": \"Floor 5\",\n  \"isActive\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete Department",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/departments/{{created_dept_id}}"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "4. Health Checks",
+      "item": [
+        {
+          "name": "Employee – Full Health",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const body = pm.response.json();",
+                "pm.test('Status Healthy', () => pm.expect(body.status).to.equal('Healthy'));",
+                "pm.test('Has checks', () => pm.expect(body.checks).to.be.an('array'));"
+              ]
+            }
+          }],
+          "request": { "method": "GET", "url": "{{emp_url}}/health" }
+        },
+        {
+          "name": "Employee – Liveness",
+          "event": [{
+            "listen": "test",
+            "script": { "exec": ["pm.test('Status 200', () => pm.response.to.have.status(200));"] }
+          }],
+          "request": { "method": "GET", "url": "{{emp_url}}/health/live" }
+        },
+        {
+          "name": "Employee – Readiness",
+          "request": { "method": "GET", "url": "{{emp_url}}/health/ready" }
+        },
+        {
+          "name": "Department – Full Health",
+          "request": { "method": "GET", "url": "{{dept_url}}/health" }
+        },
+        {
+          "name": "Department – Liveness",
+          "request": { "method": "GET", "url": "{{dept_url}}/health/live" }
+        },
+        {
+          "name": "Auth – Health",
+          "request": { "method": "GET", "url": "{{auth_url}}/api/auth/health" }
+        }
+      ]
+    },
+
+    {
+      "name": "5. Redis Cache Test",
+      "item": [
+        {
+          "name": "First Call – Cache MISS (watch logs)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "console.log('Check service logs for: Cache MISS');"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/employees/1"
+          }
+        },
+        {
+          "name": "Second Call – Cache HIT (watch logs)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "console.log('Check service logs for: Cache HIT');"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/employees/1"
+          }
+        },
+        {
+          "name": "Employee Metrics",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{emp_url}}/api/metrics"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "6. RabbitMQ Event Test",
+      "item": [
+        {
+          "name": "Create Employee (triggers EmployeeCreatedEvent)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 201', () => pm.response.to.have.status(201));",
+                "const body = pm.response.json();",
+                "pm.collectionVariables.set('rabbit_test_emp_id', body.data.employeeId);",
+                "console.log('Check RabbitMQ UI: queue department.employee.q should show 1 message processed.');"
+              ]
+            }
+          }],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type",  "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{jwt_token}}" }
+            ],
+            "url": "{{base_url}}/gateway/employees",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"firstName\": \"RabbitMQ\",\n  \"lastName\": \"TestUser\",\n  \"email\": \"rabbit.test@company.com\",\n  \"position\": \"Tester\",\n  \"salary\": 60000,\n  \"hireDate\": \"2024-01-01T00:00:00\",\n  \"departmentId\": 1,\n  \"isActive\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify Department EmployeeCount incremented",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "console.log('Check employeeCount field — should have incremented by 1.');"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/departments/1"
+          }
+        },
+        {
+          "name": "Delete Employee (triggers EmployeeDeletedEvent)",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "console.log('EmployeeDeletedEvent published — check department employeeCount decrements.');"
+              ]
+            }
+          }],
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Authorization", "value": "Bearer {{jwt_token}}" }],
+            "url": "{{base_url}}/gateway/employees/{{rabbit_test_emp_id}}"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "7. Distributed Tracing",
+      "item": [
+        {
+          "name": "Request with Custom CorrelationId",
+          "event": [{
+            "listen": "test",
+            "script": {
+              "exec": [
+                "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                "const correlationId = pm.response.headers.get('X-Correlation-Id');",
+                "pm.test('CorrelationId returned', () => pm.expect(correlationId).to.not.be.null);",
+                "console.log('CorrelationId:', correlationId);"
+              ]
+            }
+          }],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization",    "value": "Bearer {{jwt_token}}" },
+              { "key": "X-Correlation-Id", "value": "postman-trace-12345" }
+            ],
+            "url": "{{base_url}}/gateway/employees"
+          }
+        }
+      ]
+    }
+  ]
+}

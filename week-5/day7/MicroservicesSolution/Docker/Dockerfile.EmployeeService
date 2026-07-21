@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 1: Build
+# Uses the full .NET 8 SDK image to restore packages and compile the project.
+# ─────────────────────────────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy project files first (better layer caching — only re-runs restore when csproj changes)
+COPY ["EmployeeService/EmployeeService.csproj",         "EmployeeService/"]
+COPY ["Shared/Shared.csproj",                           "Shared/"]
+COPY ["Messaging/Producer/Messaging.Producer.csproj",   "Messaging/Producer/"]
+COPY ["Caching/Caching.csproj",                         "Caching/"]
+COPY ["HealthChecks/HealthChecks.csproj",               "HealthChecks/"]
+COPY ["Resilience/Resilience.csproj",                   "Resilience/"]
+COPY ["Logging/Logging.csproj",                         "Logging/"]
+COPY ["Monitoring/Monitoring.csproj",                   "Monitoring/"]
+
+RUN dotnet restore "EmployeeService/EmployeeService.csproj"
+
+# Copy all source files and publish
+COPY . .
+WORKDIR "/src/EmployeeService"
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Stage 2: Runtime
+# Uses the smaller ASP.NET Core runtime image (no SDK).
+# ─────────────────────────────────────────────────────────────────────────────
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+
+# Create logs directory inside the container
+RUN mkdir -p /app/logs
+
+EXPOSE 5002
+COPY --from=build /app/publish .
+
+# Non-root user for security
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
+USER appuser
+
+ENTRYPOINT ["dotnet", "EmployeeService.dll"]

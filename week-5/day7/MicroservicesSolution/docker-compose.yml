@@ -1,0 +1,212 @@
+version: '3.8'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# All services share one bridge network so they resolve each other by name.
+# e.g. EmployeeService connects to SQL Server at "sqlserver:1433" (not localhost).
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  microservices-net:
+    driver: bridge
+
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: sqlserver
+    networks: [microservices-net]
+    ports:
+      - "1433:1433"
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong@Password123"
+      MSSQL_PID: "Express"
+    volumes:
+      - sqlserver_data:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P YourStrong@Password123 -Q 'SELECT 1' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    networks: [microservices-net]
+    ports:
+      - "5672:5672"
+      - "15672:15672"    # Management UI: http://localhost:15672
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    networks: [microservices-net]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Microservices ────────────────────────────────────────────────────────────
+
+  authentication-service:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.AuthenticationService
+    image: employee-mgmt/authentication-service:latest
+    container_name: authentication-service
+    networks: [microservices-net]
+    ports:
+      - "5001:5001"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5001"
+      # ── DB ────────────────────────────────────────────────────────────────
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=AuthServiceDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;"
+      # ── JWT ───────────────────────────────────────────────────────────────
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      JwtSettings__ExpirationMinutes: "60"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5001/api/auth/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  department-service:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.DepartmentService
+    image: employee-mgmt/department-service:latest
+    container_name: department-service
+    networks: [microservices-net]
+    ports:
+      - "5003:5003"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5003"
+      # ── DB ────────────────────────────────────────────────────────────────
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=DepartmentServiceDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;"
+      ConnectionStrings__Redis: "redis:6379"
+      # ── JWT ───────────────────────────────────────────────────────────────
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      # ── RabbitMQ ──────────────────────────────────────────────────────────
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: "guest"
+      RabbitMQ__Password: "guest"
+      RabbitMQ__VirtualHost: "/"
+      # ── Cache ─────────────────────────────────────────────────────────────
+      Cache__DepartmentExpiryMinutes: "30"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5003/api/departments/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  employee-service:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.EmployeeService
+    image: employee-mgmt/employee-service:latest
+    container_name: employee-service
+    networks: [microservices-net]
+    ports:
+      - "5002:5002"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5002"
+      # ── DB ────────────────────────────────────────────────────────────────
+      ConnectionStrings__DefaultConnection: "Server=sqlserver,1433;Database=EmployeeServiceDb;User Id=sa;Password=YourStrong@Password123;TrustServerCertificate=True;"
+      ConnectionStrings__Redis: "redis:6379"
+      # ── JWT ───────────────────────────────────────────────────────────────
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      # ── RabbitMQ ──────────────────────────────────────────────────────────
+      RabbitMQ__Host: "rabbitmq"
+      RabbitMQ__Port: "5672"
+      RabbitMQ__UserName: "guest"
+      RabbitMQ__Password: "guest"
+      RabbitMQ__VirtualHost: "/"
+      # ── Service URLs (use container names, NOT localhost) ─────────────────
+      ServiceUrls__DepartmentService: "http://department-service:5003"
+      # ── Cache ─────────────────────────────────────────────────────────────
+      Cache__EmployeeExpiryMinutes: "10"
+      Cache__DepartmentExpiryMinutes: "30"
+    depends_on:
+      sqlserver:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      department-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5002/api/employees/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Docker/Dockerfile.ApiGateway
+    image: employee-mgmt/api-gateway:latest
+    container_name: api-gateway
+    networks: [microservices-net]
+    ports:
+      - "5000:5000"
+    environment:
+      ASPNETCORE_ENVIRONMENT: "Production"
+      ASPNETCORE_URLS: "http://+:5000"
+      JwtSettings__Secret: "SuperSecretKey@2024_MicroservicesWeek5_MinLength32Chars!"
+      JwtSettings__Issuer: "AuthenticationService"
+      JwtSettings__Audience: "MicroservicesClients"
+      JwtSettings__ExpirationMinutes: "60"
+    depends_on:
+      authentication-service:
+        condition: service_healthy
+      employee-service:
+        condition: service_healthy
+      department-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:5000/health/live || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  sqlserver_data:
+  rabbitmq_data:
+  redis_data:

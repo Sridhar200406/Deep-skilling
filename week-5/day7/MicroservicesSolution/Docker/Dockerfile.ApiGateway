@@ -1,0 +1,21 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+COPY ["ApiGateway/ApiGateway.csproj",   "ApiGateway/"]
+COPY ["Logging/Logging.csproj",         "Logging/"]
+COPY ["Monitoring/Monitoring.csproj",   "Monitoring/"]
+
+RUN dotnet restore "ApiGateway/ApiGateway.csproj"
+
+COPY . .
+WORKDIR "/src/ApiGateway"
+RUN dotnet publish -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+WORKDIR /app
+RUN mkdir -p /app/logs
+EXPOSE 5000
+COPY --from=build /app/publish .
+RUN adduser --disabled-password --gecos "" appuser && chown -R appuser /app
+USER appuser
+ENTRYPOINT ["dotnet", "ApiGateway.dll"]
