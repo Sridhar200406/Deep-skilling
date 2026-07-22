@@ -1,0 +1,29 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+publish/
+deploy.zip
+
+## Secrets — NEVER commit these
+appsettings.*.json
+!appsettings.json
+!appsettings.Development.json
+!appsettings.Production.json
+secrets.json
+*.pfx
+*.key
+.env
+
+## Logs
+logs/
+*.log
+
+## Docker
+.dockerignore
+
+## OS
+.DS_Store
+Thumbs.db
