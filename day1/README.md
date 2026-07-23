@@ -1,0 +1,1 @@
+# Day 1 – Infrastructure as Code (IaC)\n\nAll Terraform configuration for the project is located under day1/IaC/terraform/. This includes the main Terraform entry point, variable definitions, provider configuration, and reusable modules.

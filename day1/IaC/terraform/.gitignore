@@ -1,0 +1,8 @@
+*.tfstate*
+!.terraform/
+.terraform/
+.idea/
+.vscode/
+*.tfplan
+# Ignore sensitive example files
+terraform.tfvars

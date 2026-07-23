@@ -1,0 +1,1 @@
+# Day 4 – Advanced Testing & Quality Engineering\n\nUnit, integration, API, contract and end-to-end tests are placed under day4/Testing/. The folder contains a 	ests/ project and centralised test configuration (Directory.Build.props).

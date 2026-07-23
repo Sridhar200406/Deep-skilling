@@ -1,0 +1,1 @@
+# Day 3 – DevSecOps & Cloud Security\n\nSecurity-related workflows and policies live under day3/DevSecOps/.github/workflows/. This includes secret scanning, dependency scanning, CodeQL and container image scanning.

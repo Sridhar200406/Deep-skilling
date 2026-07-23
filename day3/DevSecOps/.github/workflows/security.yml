@@ -1,0 +1,15 @@
+name: SecurityScan
+on:
+  push:
+    branches: [ main ]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Gitleaks Scan
+        uses: zricethezav/gitleaks-action@v1.6.0
+      - name: Trivy Scan Docker Images
+        uses: aquasecurity/trivy-action@master
+      - name: CodeQL Analysis
+        uses: github/codeql-action/init@v2
