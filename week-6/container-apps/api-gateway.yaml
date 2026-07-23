@@ -1,0 +1,72 @@
+# Azure Container App — API Gateway (Ocelot)
+type: Microsoft.App/containerApps
+apiVersion: 2024-03-01
+name: api-gateway
+location: eastus
+properties:
+  managedEnvironmentId: /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/Week6-EmployeeManagement-RG/providers/Microsoft.App/managedEnvironments/week6-container-env
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: true              # Gateway is the only externally accessible service
+      targetPort: 8080
+      transport: http
+      allowInsecure: false
+      traffic:
+        - latestRevision: true
+          weight: 100
+    secrets:
+      - name: jwt-secret
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/JwtSettings--SecretKey
+        identity: system
+      - name: appinsights-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/ApplicationInsights--ConnectionString
+        identity: system
+  template:
+    containers:
+      - name: api-gateway
+        image: week6acr.azurecr.io/api-gateway:latest
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: ASPNETCORE_ENVIRONMENT
+            value: Production
+          - name: AzureKeyVault__VaultUri
+            value: https://week6-emp-kv.vault.azure.net/
+          - name: JwtSettings__SecretKey
+            secretRef: jwt-secret
+          - name: JwtSettings__Issuer
+            value: EmployeeManagementAPI
+          - name: JwtSettings__Audience
+            value: EmployeeManagementClient
+          - name: ApplicationInsights__ConnectionString
+            secretRef: appinsights-connection
+          # Container Apps internal DNS names
+          - name: AUTH_SERVICE_HOST
+            value: auth-service
+          - name: EMPLOYEE_SERVICE_HOST
+            value: employee-service
+          - name: DEPARTMENT_SERVICE_HOST
+            value: department-service
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 10
+    scale:
+      minReplicas: 1
+      maxReplicas: 10
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "100"

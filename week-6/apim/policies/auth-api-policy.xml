@@ -1,0 +1,58 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  AUTH API POLICY — Applied to all /api/v1/auth operations
+  
+  Auth endpoints are public (no JWT required to call /login).
+  But we apply:
+    - Strict rate limiting (brute-force prevention)
+    - IP-based throttling
+    - Request size limits
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <!-- Strict rate limit for auth: 10 requests/minute per IP -->
+    <!-- Prevents brute-force attacks on login endpoint -->
+    <rate-limit-by-key
+      calls="10"
+      renewal-period="60"
+      counter-key="@(context.Request.IpAddress)"
+      increment-condition="@(context.Operation.Id == "LoginUser")"
+      remaining-calls-variable-name="authRemainingCalls" />
+
+    <!-- Block requests with bodies over 10 KB -->
+    <set-variable name="bodySize" value="@(context.Request.Body?.As<string>()?.Length ?? 0)" />
+    <choose>
+      <when condition="@(context.Request.Body != null && (int)context.Variables["bodySize"] > 10240)">
+        <return-response>
+          <set-status code="413" reason="Payload Too Large" />
+          <set-header name="Content-Type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-body>{"success": false, "message": "Request body exceeds maximum allowed size."}</set-body>
+        </return-response>
+      </when>
+    </choose>
+
+    <!-- Forward to Auth Service backend -->
+    <set-backend-service base-url="http://auth-service/api" />
+  </inbound>
+
+  <backend>
+    <base />
+    <retry condition="@(context.Response.StatusCode >= 500)" count="2" interval="1" />
+  </backend>
+
+  <outbound>
+    <base />
+
+    <!-- Remove sensitive headers from auth responses -->
+    <set-header name="WWW-Authenticate" exists-action="delete" />
+  </outbound>
+
+  <on-error>
+    <base />
+  </on-error>
+</policies>

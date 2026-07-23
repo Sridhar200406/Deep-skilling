@@ -1,0 +1,113 @@
+# Azure Container App — Employee Service
+# Deploy: az containerapp create --yaml employee-service.yaml -g Week6-EmployeeManagement-RG
+
+type: Microsoft.App/containerApps
+apiVersion: 2024-03-01
+name: employee-service
+location: eastus
+properties:
+  managedEnvironmentId: /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/Week6-EmployeeManagement-RG/providers/Microsoft.App/managedEnvironments/week6-container-env
+
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: false              # Internal only — accessed via API Gateway
+      targetPort: 8080
+      transport: http
+      allowInsecure: false
+    secrets:
+      # Secrets reference Key Vault via Managed Identity
+      - name: sql-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/ConnectionStrings--DefaultConnection
+        identity: system
+      - name: jwt-secret
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/JwtSettings--SecretKey
+        identity: system
+      - name: blob-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/AzureBlobStorage--ConnectionString
+        identity: system
+      - name: servicebus-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/ServiceBus--ConnectionString
+        identity: system
+      - name: appinsights-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/ApplicationInsights--ConnectionString
+        identity: system
+      - name: redis-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/Redis--ConnectionString
+        identity: system
+
+  template:
+    containers:
+      - name: employee-service
+        image: week6acr.azurecr.io/employee-service:latest
+        resources:
+          cpu: 0.5
+          memory: 1Gi
+        env:
+          - name: ASPNETCORE_ENVIRONMENT
+            value: Production
+          - name: AzureKeyVault__VaultUri
+            value: https://week6-emp-kv.vault.azure.net/
+          - name: ConnectionStrings__DefaultConnection
+            secretRef: sql-connection
+          - name: JwtSettings__SecretKey
+            secretRef: jwt-secret
+          - name: JwtSettings__Issuer
+            value: EmployeeManagementAPI
+          - name: JwtSettings__Audience
+            value: EmployeeManagementClient
+          - name: JwtSettings__ExpirationMinutes
+            value: "60"
+          - name: AzureBlobStorage__ConnectionString
+            secretRef: blob-connection
+          - name: AzureBlobStorage__ContainerName
+            value: employee-files
+          - name: ServiceBus__ConnectionString
+            secretRef: servicebus-connection
+          - name: ServiceBus__TopicName
+            value: employee-events
+          - name: ApplicationInsights__ConnectionString
+            secretRef: appinsights-connection
+          - name: Redis__ConnectionString
+            secretRef: redis-connection
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 30
+            failureThreshold: 3
+          - type: Readiness
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          - type: Startup
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 12
+
+    scale:
+      minReplicas: 1
+      maxReplicas: 10
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "50"
+        - name: servicebus-scaling
+          custom:
+            type: azure-servicebus
+            metadata:
+              topicName: employee-events
+              subscriptionName: email-subscription
+              messageCount: "20"
+            auth:
+              - secretRef: servicebus-connection
+                triggerParameter: connection

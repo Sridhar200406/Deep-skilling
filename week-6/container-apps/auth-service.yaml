@@ -1,0 +1,66 @@
+# Azure Container App — Auth Service
+type: Microsoft.App/containerApps
+apiVersion: 2024-03-01
+name: auth-service
+location: eastus
+properties:
+  managedEnvironmentId: /subscriptions/<SUBSCRIPTION_ID>/resourceGroups/Week6-EmployeeManagement-RG/providers/Microsoft.App/managedEnvironments/week6-container-env
+  configuration:
+    activeRevisionsMode: Single
+    ingress:
+      external: false
+      targetPort: 8080
+      transport: http
+    secrets:
+      - name: sql-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/ConnectionStrings--DefaultConnection
+        identity: system
+      - name: jwt-secret
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/JwtSettings--SecretKey
+        identity: system
+      - name: appinsights-connection
+        keyVaultUrl: https://week6-emp-kv.vault.azure.net/secrets/ApplicationInsights--ConnectionString
+        identity: system
+  template:
+    containers:
+      - name: auth-service
+        image: week6acr.azurecr.io/auth-service:latest
+        resources:
+          cpu: 0.25
+          memory: 0.5Gi
+        env:
+          - name: ASPNETCORE_ENVIRONMENT
+            value: Production
+          - name: AzureKeyVault__VaultUri
+            value: https://week6-emp-kv.vault.azure.net/
+          - name: ConnectionStrings__DefaultConnection
+            secretRef: sql-connection
+          - name: JwtSettings__SecretKey
+            secretRef: jwt-secret
+          - name: JwtSettings__Issuer
+            value: EmployeeManagementAPI
+          - name: JwtSettings__Audience
+            value: EmployeeManagementClient
+          - name: ApplicationInsights__ConnectionString
+            secretRef: appinsights-connection
+        probes:
+          - type: Liveness
+            httpGet:
+              path: /health/live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          - type: Readiness
+            httpGet:
+              path: /health/ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-scaling
+          http:
+            metadata:
+              concurrentRequests: "30"

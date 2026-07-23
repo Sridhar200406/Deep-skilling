@@ -1,0 +1,78 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  DEPARTMENT API POLICY — Applied to /api/v1/departments operations
+  
+  GET operations: any authenticated user
+  POST/PUT/DELETE: Admin role only
+  Rate limit: 200 calls/min (departments are read-heavy)
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <!-- ── JWT Validation ─────────────────────────────────────────── -->
+    <validate-jwt
+      header-name="Authorization"
+      failed-validation-httpcode="401"
+      failed-validation-error-message="Unauthorized. Valid JWT token required."
+      require-expiration-time="true"
+      require-scheme="Bearer"
+      require-signed-tokens="true"
+      output-token-variable-name="jwt">
+      <issuer-signing-keys>
+        <key>{{jwt-secret-key}}</key>
+      </issuer-signing-keys>
+      <issuers>
+        <issuer>EmployeeManagementAPI</issuer>
+      </issuers>
+      <audiences>
+        <audience>EmployeeManagementClient</audience>
+      </audiences>
+    </validate-jwt>
+
+    <!-- ── Rate Limit — higher limit since departments are cached ─── -->
+    <rate-limit-by-key
+      calls="200"
+      renewal-period="60"
+      counter-key="@(context.Subscription?.Key ?? context.Request.IpAddress)" />
+
+    <!-- ── Role check for write operations ───────────────────────── -->
+    <set-variable name="userRole" value="@{
+      var jwt = (Jwt)context.Variables["jwt"];
+      return jwt.Claims.GetValueOrDefault("role", "User");
+    }" />
+
+    <choose>
+      <when condition="@(
+        (context.Request.Method == "POST" || context.Request.Method == "PUT" || context.Request.Method == "DELETE")
+        && (string)context.Variables["userRole"] != "Admin")">
+        <return-response>
+          <set-status code="403" reason="Forbidden" />
+          <set-header name="Content-Type" exists-action="override">
+            <value>application/json</value>
+          </set-header>
+          <set-body>{"success": false, "message": "Forbidden. Admin role required for write operations on departments.", "statusCode": 403}</set-body>
+        </return-response>
+      </when>
+    </choose>
+
+    <!-- ── Forward to Department Service ─────────────────────────── -->
+    <set-backend-service base-url="http://department-service/api" />
+  </inbound>
+
+  <backend>
+    <base />
+    <retry condition="@(context.Response.StatusCode >= 500)" count="3" interval="2" />
+  </backend>
+
+  <outbound>
+    <base />
+    <!-- Cache GET responses for 60 seconds to reduce backend load -->
+    <cache-store duration="60" />
+  </outbound>
+
+  <on-error>
+    <base />
+  </on-error>
+</policies>

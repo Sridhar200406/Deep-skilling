@@ -1,0 +1,33 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "ConnectionStrings:DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=EmployeeManagementDb;Trusted_Connection=True;TrustServerCertificate=True",
+
+    "JwtSettings:SecretKey": "Dev-Super-Secret-Key-Min-32-Chars-For-HS256!!",
+    "JwtSettings:Issuer": "EmployeeManagementAPI",
+    "JwtSettings:Audience": "EmployeeManagementClient",
+
+    "AzureBlobStorage:ConnectionString": "UseDevelopmentStorage=true",
+    "AzureBlobStorage:ContainerName": "employee-files",
+    "AzureBlobStorage:ProcessedContainerName": "employee-files-processed",
+
+    "AzureKeyVault:VaultUri": "",
+
+    "ApplicationInsights:ConnectionString": "",
+
+    "EmployeeApi:BaseUrl": "http://localhost:5000",
+    "EmployeeApi:ApiKey": "dev-internal-api-key",
+
+    "Notification:SendGridApiKey": "",
+    "Notification:FromEmail": "noreply@employeemanagement.com",
+    "Notification:FromName": "Employee Management System",
+
+    "Cleanup:InactiveDaysThreshold": "90",
+    "Cleanup:TempFileAgeHours": "24",
+
+    "Report:AdminEmail": "admin@company.com"
+  }
+}

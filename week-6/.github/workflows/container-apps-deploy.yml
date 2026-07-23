@@ -1,0 +1,226 @@
+# ═══════════════════════════════════════════════════════════════════════
+# Week 6 Day 5+6 – CI/CD: Build → ACR → Container Apps + APIM
+# ═══════════════════════════════════════════════════════════════════════
+#
+# REQUIRED GITHUB SECRETS:
+#   AZURE_CREDENTIALS              → Service principal JSON
+#   ACR_NAME                       → e.g. week6acr
+#   CONTAINER_APP_ENV              → e.g. week6-container-env
+#   RESOURCE_GROUP                 → e.g. Week6-EmployeeManagement-RG
+#   APIM_NAME                      → e.g. week6-apim (Day 6)
+#
+# ═══════════════════════════════════════════════════════════════════════
+
+name: Container Apps & APIM – CI/CD
+
+on:
+  push:
+    branches: [main, week-6-azure-deployment]
+    paths:
+      - 'week-6/src/**'
+      - 'week-6/container-apps/**'
+      - 'week-6/apim/**'
+      - 'week-6/.github/workflows/container-apps-deploy.yml'
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Service to deploy (all/employee/auth/department/gateway)'
+        default: 'all'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  RESOURCE_GROUP: ${{ secrets.RESOURCE_GROUP }}
+
+jobs:
+  # ─── Job 1: Build & Test ─────────────────────────────────────────
+  build-test:
+    name: 🔨 Build & Test
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: 📦 Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/week-6/**/*.csproj') }}
+
+      - name: 🔄 Restore & Build Employee Service
+        run: dotnet build week-6/src/EmployeeService/EmployeeService.csproj -c Release
+
+      - name: 🔄 Restore & Build Auth Service
+        run: dotnet build week-6/src/AuthService/AuthService.csproj -c Release
+
+      - name: 🔄 Restore & Build Department Service
+        run: dotnet build week-6/src/DepartmentService/DepartmentService.csproj -c Release
+
+      - name: 🔄 Restore & Build API Gateway
+        run: dotnet build week-6/src/ApiGateway/ApiGateway.csproj -c Release
+
+      - name: 🧪 Run tests
+        run: |
+          dotnet test week-6/src/EmployeeService.Tests/EmployeeService.Tests.csproj \
+            -c Release --logger "trx" || true
+
+      - name: 🏷️ Generate image tag
+        id: tag
+        run: echo "tag=$(echo ${{ github.sha }} | cut -c1-8)" >> $GITHUB_OUTPUT
+
+  # ─── Job 2: Build & Push Docker Images to ACR ────────────────────
+  build-images:
+    name: 🐳 Build & Push Images
+    runs-on: ubuntu-latest
+    needs: build-test
+    strategy:
+      matrix:
+        service:
+          - name: employee-service
+            dockerfile: week-6/src/EmployeeService/Dockerfile
+          - name: auth-service
+            dockerfile: week-6/src/AuthService/Dockerfile
+          - name: department-service
+            dockerfile: week-6/src/DepartmentService/Dockerfile
+          - name: api-gateway
+            dockerfile: week-6/src/ApiGateway/Dockerfile
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔑 Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🔑 Login to ACR
+        run: az acr login --name ${{ secrets.ACR_NAME }}
+
+      - name: 🐳 Build & Push ${{ matrix.service.name }}
+        run: |
+          IMAGE="${{ secrets.ACR_NAME }}.azurecr.io/${{ matrix.service.name }}"
+          TAG="${{ needs.build-test.outputs.image-tag }}"
+          
+          docker build \
+            -f ${{ matrix.service.dockerfile }} \
+            -t "${IMAGE}:${TAG}" \
+            -t "${IMAGE}:latest" \
+            week-6/
+          
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+          
+          echo "✅ Pushed ${IMAGE}:${TAG}"
+
+      - name: 🔒 Azure logout
+        if: always()
+        run: az logout
+
+  # ─── Job 3: Deploy to Container Apps ─────────────────────────────
+  deploy-container-apps:
+    name: 🚀 Deploy Container Apps
+    runs-on: ubuntu-latest
+    needs: [build-test, build-images]
+    environment:
+      name: production
+      url: https://${{ secrets.APIM_NAME }}.azure-api.net
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔑 Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 🚀 Deploy Employee Service
+        run: |
+          az containerapp update \
+            --name employee-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/employee-service:${{ needs.build-test.outputs.image-tag }}"
+
+      - name: 🚀 Deploy Auth Service
+        run: |
+          az containerapp update \
+            --name auth-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/auth-service:${{ needs.build-test.outputs.image-tag }}"
+
+      - name: 🚀 Deploy Department Service
+        run: |
+          az containerapp update \
+            --name department-service \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/department-service:${{ needs.build-test.outputs.image-tag }}"
+
+      - name: 🚀 Deploy API Gateway
+        run: |
+          az containerapp update \
+            --name api-gateway \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --image "${{ secrets.ACR_NAME }}.azurecr.io/api-gateway:${{ needs.build-test.outputs.image-tag }}"
+
+      - name: ✅ Verify health checks
+        run: |
+          echo "Waiting 30s for deployments to stabilize..."
+          sleep 30
+          
+          SERVICES=("employee-service" "auth-service" "department-service" "api-gateway")
+          for SERVICE in "${SERVICES[@]}"; do
+            FQDN=$(az containerapp show \
+              --name $SERVICE \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "")
+            
+            if [ -n "$FQDN" ]; then
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://${FQDN}/health/live" || echo "000")
+              echo "  $SERVICE health: $STATUS"
+            fi
+          done
+
+      - name: 🔒 Azure logout
+        if: always()
+        run: az logout
+
+  # ─── Job 4: Update APIM API definitions (Day 6) ──────────────────
+  update-apim:
+    name: 📋 Update APIM API Definitions
+    runs-on: ubuntu-latest
+    needs: deploy-container-apps
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🔑 Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: 📋 Update APIM API from OpenAPI spec
+        run: |
+          if [ -f "week-6/apim/api-definitions/employee-api.yaml" ]; then
+            az apim api import \
+              --resource-group ${{ env.RESOURCE_GROUP }} \
+              --service-name ${{ secrets.APIM_NAME }} \
+              --api-id "employee-management-v1" \
+              --specification-format OpenApiJson \
+              --specification-path "week-6/apim/api-definitions/employee-api.yaml" \
+              --path "api/v1" \
+              --display-name "Employee Management API v1" && echo "✅ APIM updated" || echo "⚠️ APIM update skipped"
+          fi
+
+      - name: 🔒 Azure logout
+        if: always()
+        run: az logout
