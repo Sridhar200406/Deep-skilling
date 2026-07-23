@@ -3,6 +3,7 @@ using EmployeeService.Application.Services;
 using EmployeeService.Infrastructure.Auth;
 using EmployeeService.Infrastructure.Azure;
 using EmployeeService.Infrastructure.Data;
+using EmployeeService.Infrastructure.Telemetry;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -78,6 +79,8 @@ try
         {
             options.ConnectionString = aiConnectionString;
         });
+        // Register custom telemetry initializer (enriches every item with service name, env, version)
+        builder.Services.AddSingleton<ITelemetryInitializer, AppInsightsTelemetryInitializer>();
         Log.Information("Application Insights telemetry enabled.");
     }
     else
@@ -355,6 +358,9 @@ try
 
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // Custom Application Insights enrichment (must be after UseAuthentication)
+    app.UseRequestTelemetryEnrichment();
 
     // Health Check endpoints
     app.MapHealthChecks("/health", new HealthCheckOptions

@@ -1,5 +1,8 @@
-# Week 6 – Azure Cloud Fundamentals & Deployment
+# Week 6 – Azure Cloud Fundamentals, Integration & CI/CD
 ## Employee Management Microservices — Azure Edition
+
+> **Day 1**: Azure resources + full API deployment  
+> **Day 2**: Azure service integration + GitHub Actions CI/CD pipeline + Unit Tests
 
 ---
 
@@ -145,39 +148,57 @@ App Service
 ```
 week-6/
 ├── EmployeeManagement.sln
-├── docker-compose.yml                    # Local development
+├── docker-compose.yml                    # Local dev stack
 ├── README.md
+├── .github/
+│   └── workflows/
+│       └── azure-deploy.yml              # Day 2: GitHub Actions CI/CD
 ├── azure/
 │   ├── deploy.sh                         # Bash deployment script
 │   └── deploy-windows.ps1                # PowerShell deployment script
+├── docs/
+│   ├── cicd-setup.md                     # Day 2: CI/CD & Secrets setup guide
+│   └── azure-integration-guide.md        # Day 2: Azure integration guide
 ├── k8s/
 │   ├── namespace.yaml
 │   ├── employee-service-deployment.yaml
 │   └── ingress.yaml
 └── src/
-    ├── Shared/                           # Shared models
-    └── EmployeeService/                  # Main API
+    ├── Shared/
+    ├── EmployeeService.Tests/             # Day 2: Unit + integration tests
+    │   ├── Services/
+    │   │   ├── EmployeeServiceTests.cs    # 10 CRUD unit tests
+    │   │   ├── AuthServiceTests.cs        # 5 auth unit tests
+    │   │   └── BlobStorageServiceTests.cs # Blob validation tests
+    │   ├── Controllers/
+    │   │   └── EmployeesControllerTests.cs
+    │   └── Integration/
+    │       └── HealthCheckTests.cs
+    └── EmployeeService/
         ├── Controllers/
-        │   ├── AuthController.cs         # POST /api/auth/login
+        │   ├── AuthController.cs         # POST /api/auth/login, /register, /verify
         │   ├── EmployeesController.cs    # CRUD /api/employees
-        │   ├── DocumentsController.cs    # Blob Storage /api/employees/{id}/documents
+        │   ├── DocumentsController.cs    # Blob /api/employees/{id}/documents
         │   ├── DepartmentsController.cs  # /api/departments
-        │   └── HealthController.cs       # /api/health
+        │   └── HealthController.cs       # /health, /health/live, /health/ready
         ├── Application/
-        │   ├── DTOs/                     # Request/Response models
-        │   └── Services/                 # Business logic
-        ├── Domain/Entities/              # EF Core entities
+        │   ├── DTOs/
+        │   └── Services/
+        ├── Domain/Entities/
         ├── Infrastructure/
-        │   ├── Data/EmployeeDbContext.cs  # EF Core + Migrations
-        │   ├── Auth/JwtTokenService.cs   # JWT generation/validation
-        │   └── Azure/
-        │       ├── BlobStorageService.cs  # Azure Blob operations
-        │       └── KeyVaultConfiguration.cs # Key Vault setup
-        ├── Migrations/                   # EF Core migrations
+        │   ├── Auth/JwtTokenService.cs
+        │   ├── Azure/
+        │   │   ├── BlobStorageService.cs
+        │   │   └── KeyVaultConfiguration.cs
+        │   ├── Data/EmployeeDbContext.cs
+        │   └── Telemetry/                # Day 2: App Insights enrichment
+        │       ├── AppInsightsTelemetryInitializer.cs
+        │       └── RequestTelemetryMiddleware.cs
+        ├── Migrations/
         ├── appsettings.json
         ├── appsettings.Development.json
         ├── appsettings.Production.json
-        ├── Program.cs                    # App configuration & startup
+        ├── Program.cs
         └── Dockerfile
 ```
 
@@ -487,3 +508,126 @@ az keyvault set-policy \
 > ```bash
 > az group delete --name "Week6-EmployeeManagement-RG" --yes --no-wait
 > ```
+
+---
+
+## 🔄 Day 2 – CI/CD with GitHub Actions
+
+### What Was Added on Day 2
+
+| Area | What's New |
+|------|-----------|
+| **CI/CD Pipeline** | `.github/workflows/azure-deploy.yml` — full build → test → deploy pipeline |
+| **Unit Tests** | 24 tests across `EmployeeService.Tests` (Services + Controllers + Integration) |
+| **App Insights enrichment** | `AppInsightsTelemetryInitializer` + `RequestTelemetryMiddleware` |
+| **Docs** | `docs/cicd-setup.md` and `docs/azure-integration-guide.md` |
+
+---
+
+### CI/CD Pipeline Overview
+
+```
+git push to main / week-6-azure-deployment
+            ↓
+  GitHub Actions triggered
+            ↓
+  ┌─── Job 1: build-and-test ────────────────┐
+  │  1. Checkout code                         │
+  │  2. Setup .NET 8                          │
+  │  3. Cache NuGet packages                  │
+  │  4. dotnet restore                        │
+  │  5. dotnet build --configuration Release  │
+  │  6. dotnet test (xUnit — 24 tests)        │
+  │  7. dotnet publish                        │
+  │  8. Upload artifact                       │
+  └───────────────────────────────────────────┘
+            ↓ (only on push, not PRs)
+  ┌─── Job 2: deploy ────────────────────────┐
+  │  1. Download artifact                     │
+  │  2. az login (AZURE_CREDENTIALS secret)  │
+  │  3. dotnet ef database update             │
+  │  4. azure/webapps-deploy                  │
+  │  5. Health check verification             │
+  │  6. az logout                             │
+  └───────────────────────────────────────────┘
+            ↓
+  https://week6-employee-api.azurewebsites.net
+```
+
+### Required GitHub Secrets
+
+Configure at: **GitHub repo → Settings → Secrets and variables → Actions**
+
+| Secret | Value | How to get |
+|--------|-------|-----------|
+| `AZURE_WEBAPP_NAME` | `week6-employee-api` | Your App Service name |
+| `AZURE_CREDENTIALS` | JSON from service principal | `az ad sp create-for-rbac --sdk-auth` |
+| `AZURE_WEBAPP_PUBLISH_PROFILE` | XML from Azure Portal | App Service → Get publish profile |
+| `SQL_CONNECTION_STRING` | Azure SQL connection string | Azure Portal → SQL DB → Connection strings |
+
+### Create the Azure Service Principal
+
+```bash
+az ad sp create-for-rbac \
+  --name "week6-github-actions-sp" \
+  --role "Contributor" \
+  --scopes "/subscriptions/<SUBSCRIPTION_ID>/resourceGroups/Week6-EmployeeManagement-RG" \
+  --sdk-auth
+```
+Copy the full JSON output → paste as `AZURE_CREDENTIALS` secret.
+
+### Trigger the Pipeline
+
+```bash
+# Push a code change to trigger automatically
+git add .
+git commit -m "feat: trigger CI/CD pipeline"
+git push origin week-6-azure-deployment
+
+# Or trigger manually:
+# GitHub → Actions → "Employee Management API – CI/CD" → Run workflow
+```
+
+### Monitor the Pipeline
+
+1. Go to: `https://github.com/Sridhar200406/Deep-skilling/actions`
+2. Click the running workflow to see live logs
+3. Green ✅ = all steps passed, app is deployed
+4. Red ❌ = check the failed step for error details
+
+---
+
+## 🧪 Running Tests Locally
+
+```bash
+cd src/EmployeeService.Tests
+
+# Run all tests
+dotnet test
+
+# Run with detailed output
+dotnet test --verbosity normal
+
+# Run with code coverage
+dotnet test --collect:"XPlat Code Coverage"
+
+# Run only unit tests (skip integration)
+dotnet test --filter "FullyQualifiedName!~Integration"
+```
+
+**Test coverage**:
+
+| Test Class | Tests | What it covers |
+|-----------|-------|----------------|
+| `EmployeeServiceTests` | 10 | Create, Read, Update, Delete, Pagination, Search |
+| `AuthServiceTests` | 5 | Register, Login, Duplicate detection |
+| `BlobStorageServiceTests` | 4 | Content type validation, config validation |
+| `EmployeesControllerTests` | 5 | HTTP responses, 404 handling |
+| `HealthCheckTests` | 4 | Live endpoint, Auth guard, Swagger |
+
+---
+
+## 📖 Additional Documentation
+
+- **CI/CD Setup Guide**: `docs/cicd-setup.md` — step-by-step pipeline setup, secrets config, troubleshooting
+- **Azure Integration Guide**: `docs/azure-integration-guide.md` — all Azure services explained with code examples and KQL queries
