@@ -3,6 +3,8 @@ using EmployeeService.Application.Services;
 using EmployeeService.Infrastructure.Auth;
 using EmployeeService.Infrastructure.Azure;
 using EmployeeService.Infrastructure.Data;
+using EmployeeService.Infrastructure.Functions;
+using EmployeeService.Infrastructure.Middleware;
 using EmployeeService.Infrastructure.Telemetry;
 using Microsoft.ApplicationInsights.Extensibility;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -187,6 +189,14 @@ try
     builder.Services.AddScoped<IDocumentAppService, DocumentAppService>();
     builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
 
+    // Azure Functions integration
+    builder.Services.AddScoped<IFunctionTriggerService, FunctionTriggerService>();
+    builder.Services.AddHttpClient("AzureFunctions", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(10);
+        client.DefaultRequestHeaders.Add("Accept", "application/json");
+    });
+
     // ─────────────────────────────────────────────
     // STEP 10: Health Checks
     // ─────────────────────────────────────────────
@@ -358,6 +368,9 @@ try
 
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // APIM header processing — extracts X-User-Id, X-User-Role, X-Correlation-ID
+    app.UseApimHeaders();
 
     // Custom Application Insights enrichment (must be after UseAuthentication)
     app.UseRequestTelemetryEnrichment();

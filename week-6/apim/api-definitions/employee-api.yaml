@@ -1,0 +1,388 @@
+openapi: 3.0.1
+info:
+  title: Employee Management API
+  description: |
+    REST API for managing employees, integrated with Azure API Management.
+    All endpoints except /auth/login and /auth/register require a valid JWT Bearer token.
+  version: v1
+  contact:
+    name: Employee Management Team
+
+servers:
+  - url: https://week6-apim.azure-api.net/api/v1
+    description: Azure API Management (Production)
+  - url: http://localhost:5000
+    description: Local Development
+
+tags:
+  - name: Authentication
+    description: Login, register and validate JWT tokens
+  - name: Employees
+    description: Employee CRUD operations
+  - name: Departments
+    description: Department management
+
+paths:
+  # ── Authentication ────────────────────────────────────────────────
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login and receive JWT token
+      operationId: LoginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              username: admin
+              password: Admin@123
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      operationId: RegisterUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /auth/validate:
+    post:
+      tags: [Authentication]
+      summary: Validate a JWT token
+      operationId: ValidateToken
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Token validation result
+
+  # ── Employees ─────────────────────────────────────────────────────
+  /employees:
+    get:
+      tags: [Employees]
+      summary: List all active employees
+      operationId: GetAllEmployees
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, default: 10 }
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paged list of employees
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PagedEmployeeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags: [Employees]
+      summary: Create a new employee
+      operationId: CreateEmployee
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEmployeeRequest'
+            example:
+              firstName: Jane
+              lastName: Smith
+              email: jane.smith@company.com
+              position: Senior Developer
+              salary: 85000
+              departmentId: 1
+      responses:
+        '201':
+          description: Employee created
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /employees/{id}:
+    get:
+      tags: [Employees]
+      summary: Get employee by ID
+      operationId: GetEmployeeById
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Employee found
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Employees]
+      summary: Update an employee
+      operationId: UpdateEmployee
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEmployeeRequest'
+      responses:
+        '200':
+          description: Employee updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Employees]
+      summary: Delete an employee (Admin only)
+      operationId: DeleteEmployee
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Employee deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ── Departments ───────────────────────────────────────────────────
+  /departments:
+    get:
+      tags: [Departments]
+      summary: List all departments
+      operationId: GetAllDepartments
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: List of departments
+
+    post:
+      tags: [Departments]
+      summary: Create a department (Admin only)
+      operationId: CreateDepartment
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        '201':
+          description: Department created
+
+# ── Components ────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter JWT token obtained from /auth/login
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: Ocp-Apim-Subscription-Key
+      description: APIM subscription key
+
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, example: admin }
+        password: { type: string, example: Admin@123 }
+
+    LoginResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        data:
+          type: object
+          properties:
+            token: { type: string }
+            username: { type: string }
+            email: { type: string }
+            role: { type: string }
+            expiresAt: { type: string, format: date-time }
+
+    RegisterRequest:
+      type: object
+      required: [username, email, password]
+      properties:
+        username: { type: string }
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        role: { type: string, enum: [User, Manager, Admin], default: User }
+
+    CreateEmployeeRequest:
+      type: object
+      required: [firstName, lastName, email, position, departmentId]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        position: { type: string }
+        salary: { type: number }
+        departmentId: { type: integer }
+        hireDate: { type: string, format: date-time }
+
+    UpdateEmployeeRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateEmployeeRequest'
+        - type: object
+          properties:
+            isActive: { type: boolean }
+
+    PagedEmployeeResponse:
+      type: object
+      properties:
+        success: { type: boolean }
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: integer }
+                  fullName: { type: string }
+                  email: { type: string }
+                  position: { type: string }
+                  departmentName: { type: string }
+            totalCount: { type: integer }
+            pageNumber: { type: integer }
+            pageSize: { type: integer }
+            totalPages: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: JWT token missing or invalid
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message: { type: string }
+              statusCode: { type: integer, example: 401 }
+
+    Forbidden:
+      description: Insufficient role/permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message: { type: string }
+              statusCode: { type: integer, example: 403 }
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message: { type: string }
+              statusCode: { type: integer, example: 404 }
+
+    BadRequest:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message: { type: string }
+              errors: { type: array, items: { type: string } }
+
+    RateLimited:
+      description: Too many requests
+      headers:
+        X-Rate-Limit-Limit:
+          schema: { type: integer }
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              success: { type: boolean, example: false }
+              message: { type: string }
+              retryAfter: { type: integer }

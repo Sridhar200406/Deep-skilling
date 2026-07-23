@@ -12,7 +12,7 @@ namespace ApiGateway.Middleware
     {
         private readonly RequestDelegate _next;
         private readonly ILogger<GatewayExceptionMiddleware> _logger;
-        private readonly IHostEnvironment _env;
+        private readonly IHostEnvironment _env;  
 
         public GatewayExceptionMiddleware(
             RequestDelegate next,

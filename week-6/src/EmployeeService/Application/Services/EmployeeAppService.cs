@@ -1,9 +1,12 @@
 using EmployeeService.Application.DTOs;
 using EmployeeService.Domain.Entities;
 using EmployeeService.Infrastructure.Data;
+using EmployeeService.Infrastructure.Functions;
+using EmployeeService.Infrastructure.Messaging;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Logging;
+using Shared.Models;
 using System.Text.Json;
 
 namespace EmployeeService.Application.Services;
@@ -23,16 +26,22 @@ public class EmployeeAppService : IEmployeeAppService
     private readonly EmployeeDbContext _context;
     private readonly IDistributedCache _cache;
     private readonly ILogger<EmployeeAppService> _logger;
+    private readonly IFunctionTriggerService? _functionTrigger;
+    private readonly IServiceBusPublisher? _serviceBusPublisher;
     private const string CacheKeyPrefix = "employee:";
 
     public EmployeeAppService(
         EmployeeDbContext context,
         IDistributedCache cache,
-        ILogger<EmployeeAppService> logger)
+        ILogger<EmployeeAppService> logger,
+        IFunctionTriggerService? functionTrigger = null,
+        IServiceBusPublisher? serviceBusPublisher = null)
     {
         _context = context;
         _cache = cache;
         _logger = logger;
+        _functionTrigger = functionTrigger;
+        _serviceBusPublisher = serviceBusPublisher;
     }
 
     public async Task<PagedResult<EmployeeListDto>> GetAllAsync(int page, int pageSize, string? search)
@@ -140,7 +149,18 @@ public class EmployeeAppService : IEmployeeAppService
 
         // Reload with department
         await _context.Entry(employee).Reference(e => e.Department).LoadAsync();
-        return MapToDto(employee);
+        var dto = MapToDto(employee);
+
+        // Fire-and-forget: trigger Azure Function notification (non-blocking)
+        if (_functionTrigger != null)
+        {
+            _ = _functionTrigger.TriggerEmployeeNotificationAsync(
+                employee.Id, employee.FirstName, employee.LastName,
+                employee.Email, employee.Position,
+                dto.DepartmentName, "EmployeeCreated");
+        }
+
+        return dto;
     }
 
     public async Task<EmployeeDto?> UpdateAsync(int id, UpdateEmployeeDto dto)
@@ -173,7 +193,18 @@ public class EmployeeAppService : IEmployeeAppService
         _logger.LogInformation("Updated employee {EmployeeId}", id);
 
         await _context.Entry(employee).Reference(e => e.Department).LoadAsync();
-        return MapToDto(employee);
+        var dto = MapToDto(employee);
+
+        // Fire-and-forget: trigger Azure Function notification (non-blocking)
+        if (_functionTrigger != null)
+        {
+            _ = _functionTrigger.TriggerEmployeeNotificationAsync(
+                employee.Id, employee.FirstName, employee.LastName,
+                employee.Email, employee.Position,
+                dto.DepartmentName, "EmployeeUpdated");
+        }
+
+        return dto;
     }
 
     public async Task<bool> DeleteAsync(int id)

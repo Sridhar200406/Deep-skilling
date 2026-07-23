@@ -1,0 +1,84 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  JWT VALIDATION POLICY — Applied at API or Operation level
+  
+  This policy validates JWT tokens BEFORE the request reaches backend services.
+  Unauthorized requests are rejected at the APIM layer — backend services
+  never receive invalid tokens.
+  
+  Key fields validated:
+    - Token exists in Authorization: Bearer <token>
+    - Signature is valid (using JWT secret from Key Vault named value)
+    - Token is not expired
+    - Issuer matches EmployeeManagementAPI
+    - Audience matches EmployeeManagementClient
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <!-- ── JWT Validation ─────────────────────────────────────────── -->
+    <validate-jwt
+      header-name="Authorization"
+      failed-validation-httpcode="401"
+      failed-validation-error-message="Unauthorized. A valid JWT token is required."
+      require-expiration-time="true"
+      require-scheme="Bearer"
+      require-signed-tokens="true">
+
+      <issuer-signing-keys>
+        <!-- Key Vault named value: {{jwt-secret-key}} -->
+        <key>{{jwt-secret-key}}</key>
+      </issuer-signing-keys>
+
+      <issuers>
+        <issuer>EmployeeManagementAPI</issuer>
+      </issuers>
+
+      <audiences>
+        <audience>EmployeeManagementClient</audience>
+      </audiences>
+
+      <required-claims>
+        <claim name="sub" match="any">
+          <!-- sub (subject) must exist — contains the user ID -->
+        </claim>
+      </required-claims>
+    </validate-jwt>
+
+    <!-- ── Extract authenticated user for downstream services ─────── -->
+    <!-- Adds X-Authenticated-User and X-User-Role headers to backend requests -->
+    <set-header name="X-Authenticated-User" exists-action="override">
+      <value>@(context.Request.Headers.GetValueOrDefault("Authorization", "").Replace("Bearer ", ""))</value>
+    </set-header>
+
+  </inbound>
+
+  <backend>
+    <base />
+  </backend>
+
+  <outbound>
+    <!-- Remove internal headers from responses sent to clients -->
+    <set-header name="X-Powered-By" exists-action="delete" />
+    <set-header name="X-AspNet-Version" exists-action="delete" />
+    <set-header name="Server" exists-action="delete" />
+    <base />
+  </outbound>
+
+  <on-error>
+    <base />
+    <set-header name="Content-Type" exists-action="override">
+      <value>application/json</value>
+    </set-header>
+    <set-body>@{
+      return new JObject(
+        new JProperty("success", false),
+        new JProperty("message", context.LastError.Message),
+        new JProperty("statusCode", context.Response.StatusCode),
+        new JProperty("timestamp", DateTime.UtcNow.ToString("O"))
+      ).ToString();
+    }</set-body>
+  </on-error>
+</policies>

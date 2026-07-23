@@ -2,7 +2,12 @@
 ## Employee Management Microservices — Azure Edition
 
 > **Day 1**: Azure resources + full API deployment  
-> **Day 2**: Azure service integration + GitHub Actions CI/CD pipeline + Unit Tests
+> **Day 2**: Azure service integration + GitHub Actions CI/CD pipeline + Unit Tests  
+> **Day 3**: Azure Functions (HTTP, Blob, Timer triggers)  
+> **Day 4**: Azure Service Bus messaging + event processing  
+> **Day 5**: Redis caching + Polly resilience patterns  
+> **Day 6**: Azure Container Apps + Container Registry + APIM  
+> **Day 7**: Final integration testing, security review & documentation
 
 ---
 
@@ -623,7 +628,52 @@ dotnet test --filter "FullyQualifiedName!~Integration"
 | `AuthServiceTests` | 5 | Register, Login, Duplicate detection |
 | `BlobStorageServiceTests` | 4 | Content type validation, config validation |
 | `EmployeesControllerTests` | 5 | HTTP responses, 404 handling |
-| `HealthCheckTests` | 4 | Live endpoint, Auth guard, Swagger |
+| `EndToEndIntegrationTests` | 25 | Day 7: E2E auth, CRUD, Azure config, resilience |
+| `SecurityVerificationTests` | 15 | Day 7: Secrets, CORS, file upload, infrastructure |
+
+---
+
+## 🔄 Day 7 – Final Integration, Testing & Documentation
+
+### What Was Added on Day 7
+
+| Area | What's New |
+|------|-----------| 
+| **E2E Integration Tests** | `EndToEndIntegrationTests.cs` — 25 tests covering auth, CRUD, health, Azure, resilience |
+| **Security Verification Tests** | `SecurityVerificationTests.cs` — 15 tests for secrets, CORS, auth, file upload |
+| **Day 7 Summary** | `WEEK6-DAY7-SUMMARY.md` — Complete testing checklist, architecture, verification |
+| **README Update** | Final architecture diagram, all Azure services, complete documentation |
+
+### Final Architecture
+
+```
+Client → Azure API Management → Azure Container Apps
+                                       │
+                    ┌──────────────────┼──────────────────┐
+                    ▼                  ▼                  ▼
+             Employee Service    Auth Service     Department Service
+                    │
+        ┌───────────┼───────────┬───────────┬───────────┐
+        ▼           ▼           ▼           ▼           ▼
+   Azure SQL     Redis      Azure Blob  Service Bus  Azure Functions
+
+Supporting: Key Vault │ App Insights │ Log Analytics │ Container Registry │ GitHub Actions
+```
+
+### Final Security Checklist
+
+- [x] No secrets committed to GitHub
+- [x] JWT secrets in Azure Key Vault
+- [x] Database credentials in Key Vault
+- [x] Storage credentials in Key Vault
+- [x] HTTPS enforced
+- [x] CORS restricted in production
+- [x] API Management validates JWT
+- [x] Rate limiting enabled
+- [x] File upload validates content type/size
+- [x] Passwords hashed with BCrypt
+- [x] Managed Identity for Key Vault
+- [x] SQL Server firewall rules configured
 
 ---
 
@@ -631,3 +681,7 @@ dotnet test --filter "FullyQualifiedName!~Integration"
 
 - **CI/CD Setup Guide**: `docs/cicd-setup.md` — step-by-step pipeline setup, secrets config, troubleshooting
 - **Azure Integration Guide**: `docs/azure-integration-guide.md` — all Azure services explained with code examples and KQL queries
+- **Azure Functions Guide**: `docs/day3-azure-functions.md` — HTTP, Blob, Timer trigger setup and configuration
+- **Service Bus Guide**: `docs/day4-service-bus.md` — Message publishing, topics, subscriptions, dead-letter
+- **Day 7 Summary**: `WEEK6-DAY7-SUMMARY.md` — Complete testing checklist and final architecture
+

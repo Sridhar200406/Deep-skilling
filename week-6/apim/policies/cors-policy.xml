@@ -1,0 +1,61 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  CORS POLICY
+  
+  Restricts which frontend origins can call the API.
+  
+  Development: localhost origins allowed.
+  Production:  Only approved domains.
+  
+  Never use allow-credentials="true" with AllowAnyOrigin — this is a
+  security vulnerability. Always specify exact origins.
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<policies>
+  <inbound>
+    <base />
+
+    <cors allow-credentials="true">
+      <allowed-origins>
+        <!-- Production frontend -->
+        <origin>https://week6-employee-ui.azurewebsites.net</origin>
+        <origin>https://week6-employee-app.azurestaticapps.net</origin>
+        <!-- Development origins -->
+        <origin>http://localhost:3000</origin>
+        <origin>http://localhost:4200</origin>
+        <origin>http://localhost:5173</origin>
+        <origin>http://localhost:8080</origin>
+      </allowed-origins>
+
+      <allowed-methods preflight-result-max-age="86400">
+        <method>GET</method>
+        <method>POST</method>
+        <method>PUT</method>
+        <method>DELETE</method>
+        <method>PATCH</method>
+        <method>OPTIONS</method>
+      </allowed-methods>
+
+      <allowed-headers>
+        <header>Authorization</header>
+        <header>Content-Type</header>
+        <header>Accept</header>
+        <header>X-Requested-With</header>
+        <header>X-Subscription-Key</header>
+        <header>Ocp-Apim-Subscription-Key</header>
+        <header>X-Correlation-ID</header>
+      </allowed-headers>
+
+      <expose-headers>
+        <header>X-Rate-Limit-Limit</header>
+        <header>X-Rate-Limit-Remaining</header>
+        <header>X-Correlation-ID</header>
+        <header>X-Request-ID</header>
+      </expose-headers>
+    </cors>
+
+  </inbound>
+  <backend><base /></backend>
+  <outbound><base /></outbound>
+  <on-error><base /></on-error>
+</policies>

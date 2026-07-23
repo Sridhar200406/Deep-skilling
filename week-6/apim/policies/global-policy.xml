@@ -1,0 +1,110 @@
+<!--
+  ═══════════════════════════════════════════════════════════════════════
+  GLOBAL API MANAGEMENT POLICY
+  Applied to ALL APIs in the APIM instance.
+  
+  Applies:
+    1. CORS (browser access)
+    2. Correlation ID tracking (distributed tracing)
+    3. Security headers
+    4. Error response standardization
+  ═══════════════════════════════════════════════════════════════════════
+-->
+<policies>
+  <inbound>
+
+    <!-- ── CORS — applies to every API ───────────────────────────── -->
+    <cors allow-credentials="true">
+      <allowed-origins>
+        <origin>https://week6-employee-ui.azurewebsites.net</origin>
+        <origin>https://week6-employee-app.azurestaticapps.net</origin>
+        <origin>http://localhost:3000</origin>
+        <origin>http://localhost:4200</origin>
+        <origin>http://localhost:5173</origin>
+      </allowed-origins>
+      <allowed-methods preflight-result-max-age="86400">
+        <method>GET</method><method>POST</method><method>PUT</method>
+        <method>DELETE</method><method>PATCH</method><method>OPTIONS</method>
+      </allowed-methods>
+      <allowed-headers>
+        <header>Authorization</header>
+        <header>Content-Type</header>
+        <header>Accept</header>
+        <header>Ocp-Apim-Subscription-Key</header>
+        <header>X-Correlation-ID</header>
+      </allowed-headers>
+      <expose-headers>
+        <header>X-Rate-Limit-Limit</header>
+        <header>X-Rate-Limit-Remaining</header>
+        <header>X-Correlation-ID</header>
+      </expose-headers>
+    </cors>
+
+    <!-- ── Correlation ID ─────────────────────────────────────────── -->
+    <!-- Generate a unique request ID if not provided by the caller -->
+    <set-variable name="correlationId"
+      value="@(context.Request.Headers.GetValueOrDefault("X-Correlation-ID", Guid.NewGuid().ToString()))" />
+    <set-header name="X-Correlation-ID" exists-action="override">
+      <value>@((string)context.Variables["correlationId"])</value>
+    </set-header>
+    <set-header name="X-Request-ID" exists-action="override">
+      <value>@(context.RequestId.ToString())</value>
+    </set-header>
+
+    <!-- ── Forward API version to backend ────────────────────────── -->
+    <set-header name="X-API-Version" exists-action="override">
+      <value>@(context.Api.Version ?? "v1")</value>
+    </set-header>
+
+  </inbound>
+
+  <backend>
+    <base />
+  </backend>
+
+  <outbound>
+    <base />
+
+    <!-- ── Security headers on all responses ─────────────────────── -->
+    <set-header name="X-Content-Type-Options" exists-action="override">
+      <value>nosniff</value>
+    </set-header>
+    <set-header name="X-Frame-Options" exists-action="override">
+      <value>DENY</value>
+    </set-header>
+    <set-header name="X-XSS-Protection" exists-action="override">
+      <value>1; mode=block</value>
+    </set-header>
+    <set-header name="Referrer-Policy" exists-action="override">
+      <value>strict-origin-when-cross-origin</value>
+    </set-header>
+
+    <!-- Echo correlation ID back to client -->
+    <set-header name="X-Correlation-ID" exists-action="override">
+      <value>@((string)context.Variables["correlationId"])</value>
+    </set-header>
+
+    <!-- Remove internal infrastructure headers -->
+    <set-header name="X-Powered-By" exists-action="delete" />
+    <set-header name="X-AspNet-Version" exists-action="delete" />
+    <set-header name="Server" exists-action="delete" />
+
+  </outbound>
+
+  <on-error>
+    <base />
+    <!-- Standardize error responses across all APIs -->
+    <set-header name="Content-Type" exists-action="override">
+      <value>application/json</value>
+    </set-header>
+    <set-body>@{
+      return new JObject(
+        new JProperty("success", false),
+        new JProperty("message", context.LastError?.Message ?? "An unexpected error occurred."),
+        new JProperty("statusCode", context.Response.StatusCode),
+        new JProperty("correlationId", context.Variables.GetValueOrDefault<string>("correlationId")),
+        new JProperty("timestamp", DateTime.UtcNow.ToString("O"))
+      ).ToString();
+    }</set-body>
+  </on-error>
+</policies>
